@@ -1,16 +1,16 @@
 package net.golikov
 
 import cats.effect.{ Async, Resource }
-import cats.implicits.{ catsSyntaxTuple2Parallel, toTraverseOps }
+import cats.implicits.toTraverseOps
 import ciris._
 import io.estatico.newtype.Coercible
 import io.estatico.newtype.macros.newtype
 import io.estatico.newtype.ops._
-import net.golikov.RouterConfig.HttpPort
+import net.golikov.ConverterConfig.HttpPort
 
-case class RouterConfig(httpPort: HttpPort, converterPort: HttpPort)
+case class ConverterConfig(httpPort: HttpPort)
 
-object RouterConfig {
+object ConverterConfig {
   @newtype case class HttpPort(value: Int)
 
   implicit def coercibleDecoder[A: Coercible[B, *], B: ConfigDecoder[String, *]]: ConfigDecoder[String, A] =
@@ -25,11 +25,11 @@ object RouterConfig {
       cv.default(value.coerce[A])
   }
 
-  private def value[F[_]]: ConfigValue[F, RouterConfig] =
-    (
-      env("ROUTER_HTTP_PORT").as[HttpPort].withDefault(8081),
-      env("CONVERTER_HTTP_PORT").as[HttpPort].withDefault(8082)
-    ).parMapN(RouterConfig.apply)
+  private def value[F[_]]: ConfigValue[F, ConverterConfig] =
+    env("CONVERTER_HTTP_PORT")
+      .as[HttpPort]
+      .withDefault(8082)
+      .map(ConverterConfig(_))
 
-  def configR[F[_]: Async]: Resource[F, RouterConfig] = value.resource
+  def configR[F[_]: Async]: Resource[F, ConverterConfig] = value.resource
 }

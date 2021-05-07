@@ -1,43 +1,48 @@
 package net.golikov
 
+import cats.data.Validated
 import cats.effect.Async
 import cats.implicits._
 import doobie.h2.H2Transactor
-import doobie.implicits.{toDoobieStreamOps, _}
+import doobie.implicits.{ toDoobieStreamOps, _ }
 import doobie.quill.DoobieContext
-import io.getquill.{SnakeCase, idiom => _}
+import io.getquill.{ SnakeCase, idiom => _ }
 import net.golikov.Transfer._
+import org.http4s.Uri.Authority
+import org.http4s.Uri.Scheme.http
 import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
+import org.http4s.client.{ Client, UnexpectedStatus }
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{HttpRoutes, ApiVersion => _}
+import org.http4s.{ HttpRoutes, Uri, ApiVersion => _ }
 
-class HttpRouterService[F[_]](xa: H2Transactor[F])(implicit F: Async[F])
-    extends Http4sDsl[F] {
+class HttpRouterService[F[_]](xa: H2Transactor[F], config: RouterConfig, httpClient: Client[F])(implicit F: Async[F]) extends Http4sDsl[F] {
 
-  val ctx = new DoobieContext.H2[SnakeCase](SnakeCase)
+  private val converterUri = Uri(scheme = http.some, authority = Authority(port = config.converterPort.value.some).some) / "transactions"
+
+  private val ctx = new DoobieContext.H2[SnakeCase](SnakeCase)
   import ctx._
 
   def all: fs2.Stream[F, Transfer] =
     ctx.stream(quote(query[Transfer])).transact(xa)
 
-  def insert(transfer: Transfer): doobie.ConnectionIO[Option[BigDecimal]] =
-    ctx.run(quote {
-      query[Transfer].insert(lift(transfer)).returningGenerated(_.id)
-    })
+  def insert(transfer: Transfer): doobie.ConnectionIO[Transfer] =
+    ctx
+      .run(quote {
+        query[Transfer].insert(lift(transfer)).returningGenerated(_.id)
+      })
+      .map(id => transfer.copy(id = id))
 
   def routes: HttpRoutes[F] = HttpRoutes.of[F] {
-    case GET -> Root / "hello" / name => Ok(s"Hello $name")
     // Below is required since circe-fs2 does not work with CE3 yet
-    case GET -> Root / "transfers" => Ok(all.compile.toList)
+    case GET -> Root / "transfers"        => Ok(all.compile.toList)
     case req @ POST -> Root / "transfers" =>
       (for {
-        file <- req.body.compile.to(Array)
-        _    <- insert(Transfer(None, file)).transact(xa)
-      } yield ()) *> Ok()
+        file        <- req.body.compile.to(Array)
+        _           <- insert(Transfer(None, file)).transact(xa)
+        converterReq = req.withUri(converterUri)
+        status      <- httpClient.status(converterReq)
+        _           <- if (status.isSuccess) F.unit
+                       else F.raiseError(UnexpectedStatus(status, converterReq.method, converterReq.uri))
+      } yield ()) *> Created()
   }
-}
-
-object HttpRouterService {
-  def apply[F[_]: Async](xa: H2Transactor[F]): HttpRouterService[F] =
-    new HttpRouterService[F](xa)
 }

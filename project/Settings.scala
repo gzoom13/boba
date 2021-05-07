@@ -39,8 +39,6 @@ object Settings {
     )
   }
 
-  val serviceDependencies = List(cats, catsEffect, neutronCore, slf4j, zioCats) ++ zioTest
-  val routerDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
-  val serverDependencies = List(neutronCirce, ciris) ++ zio
-  val domainDependencies = List(newtype) ++ circe
+  val routerMockDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
+  val converterMockDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
 }

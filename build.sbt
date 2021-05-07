@@ -9,4 +9,8 @@ version := "1.0"
 
 lazy val routerMock = (project in file("mocks/router"))
   .settings(commonSettings)
-  .settings(libraryDependencies ++= routerDependencies)
+  .settings(libraryDependencies ++= routerMockDependencies)
+
+lazy val converterMock = (project in file("mocks/converter"))
+  .settings(commonSettings)
+  .settings(libraryDependencies ++= converterMockDependencies)
