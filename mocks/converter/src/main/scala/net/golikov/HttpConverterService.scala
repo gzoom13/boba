@@ -4,14 +4,14 @@ import cats.effect.Async
 import cats.free.Trampoline
 import cats.implicits._
 import doobie.h2.H2Transactor
-import doobie.implicits.{ toDoobieStreamOps, _ }
+import doobie.implicits.{toDoobieStreamOps, _}
 import doobie.quill.DoobieContext
 import io.circe._
 import io.circe.parser._
-import io.getquill.{ SnakeCase, idiom => _ }
+import io.getquill.{SnakeCase, idiom => _}
 import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{ HttpRoutes, ApiVersion => _ }
+import org.http4s.{HttpRoutes, ApiVersion => _}
 
 import scala.Array.emptyByteArray
 
@@ -41,8 +41,8 @@ class HttpConverterService[F[_]](xa: H2Transactor[F])(implicit F: Async[F]) exte
       case GET -> Root / "transactions"        => Ok(transactions.compile.toList)
       case req @ POST -> Root / "transactions" =>
         (for {
-          content      <- req.body.compile.to(Array)
-          origTran     <- F.fromEither(parse(new String(content)))
+          content      <- req.body.through(fs2.text.utf8Decode).compile.string
+          origTran     <- F.fromEither(parse(content))
           origTranId   <- F.fromEither(origTran.hcursor.downField("id").as[Long])
           newTranId    <- insert(ConvertedTransaction(None, origTranId, emptyByteArray)).transact(xa)
           convertedTran = convert(origTran, newTranId)

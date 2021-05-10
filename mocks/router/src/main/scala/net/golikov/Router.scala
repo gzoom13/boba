@@ -11,6 +11,7 @@ import org.http4s.client.JavaNetClientBuilder
 import org.http4s.implicits._
 import org.http4s.server.blaze._
 import org.http4s.{ ApiVersion => _ }
+import org.http4s.client.middleware.{ Logger, RequestLogger, ResponseLogger }
 
 object Router extends IOApp {
 
@@ -26,15 +27,16 @@ object Router extends IOApp {
       transactor <- transactorR[IO]
     } yield (transactor, config)).use { case (xa, config) =>
       for {
-        ec        <- IO.executionContext
-        _         <- sql"CREATE TABLE TRANSFER(id IDENTITY PRIMARY KEY, content BINARY)".update.run.transact(xa)
-        httpClient = JavaNetClientBuilder[IO].create
-        _         <- BlazeServerBuilder[IO](ec)
-                       .bindHttp(config.httpPort.value, "localhost")
-                       .withHttpApp(new HttpRouterService(xa, config, httpClient).routes.orNotFound)
-                       .serve
-                       .compile
-                       .drain
+        ec              <- IO.executionContext
+        _               <- sql"CREATE TABLE TRANSFER(id IDENTITY PRIMARY KEY, content BINARY)".update.run.transact(xa)
+        httpClient       = JavaNetClientBuilder[IO].create
+        httpClientLogged = Logger.apply(logHeaders = true, logBody = true)(httpClient)
+        _               <- BlazeServerBuilder[IO](ec)
+                             .bindHttp(config.httpPort.value, "localhost")
+                             .withHttpApp(new HttpRouterService(xa, config, httpClientLogged).routes.orNotFound)
+                             .serve
+                             .compile
+                             .drain
       } yield ExitCode.Success
     }
 

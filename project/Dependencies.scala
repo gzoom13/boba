@@ -58,7 +58,7 @@ object Version {
   val fs2Core        = "3.0.2"
   val doobie         = "1.0.0-M2"
   val quill          = "3.7.1"
-  val http4s         = "1.0.0-M16"
+  val http4s         = "1.0.0-M21"
   val kindProjector  = "0.11.3"
   val ciris          = "2.0.0-RC2"
   val circe          = "0.13.0"

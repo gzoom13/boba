@@ -1,19 +1,18 @@
 package net.golikov
 
-import cats.data.Validated
 import cats.effect.Async
 import cats.implicits._
 import doobie.h2.H2Transactor
-import doobie.implicits.{ toDoobieStreamOps, _ }
+import doobie.implicits.{toDoobieStreamOps, _}
 import doobie.quill.DoobieContext
-import io.getquill.{ SnakeCase, idiom => _ }
+import io.getquill.{SnakeCase, idiom => _}
 import net.golikov.Transfer._
 import org.http4s.Uri.Authority
 import org.http4s.Uri.Scheme.http
 import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
-import org.http4s.client.{ Client, UnexpectedStatus }
+import org.http4s.client.{Client, UnexpectedStatus}
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{ HttpRoutes, Uri, ApiVersion => _ }
+import org.http4s.{EntityEncoder, HttpRoutes, Request, Uri, ApiVersion => _}
 
 class HttpRouterService[F[_]](xa: H2Transactor[F], config: RouterConfig, httpClient: Client[F])(implicit F: Async[F]) extends Http4sDsl[F] {
 
@@ -39,7 +38,7 @@ class HttpRouterService[F[_]](xa: H2Transactor[F], config: RouterConfig, httpCli
       (for {
         file        <- req.body.compile.to(Array)
         _           <- insert(Transfer(None, file)).transact(xa)
-        converterReq = req.withUri(converterUri)
+        converterReq = Request[F](method = POST, uri = converterUri).withEntity(new String(file))(EntityEncoder.stringEncoder)
         status      <- httpClient.status(converterReq)
         _           <- if (status.isSuccess) F.unit
                        else F.raiseError(UnexpectedStatus(status, converterReq.method, converterReq.uri))

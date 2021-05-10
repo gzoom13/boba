@@ -9,6 +9,7 @@ import io.getquill.{ idiom => _ }
 import net.golikov.ConverterConfig.configR
 import org.http4s.implicits._
 import org.http4s.server.blaze._
+import org.http4s.server.middleware.RequestLogger
 import org.http4s.{ ApiVersion => _ }
 
 object Converter extends IOApp {
@@ -25,18 +26,20 @@ object Converter extends IOApp {
       transactor <- transactorR[IO]
     } yield (transactor, config)).use { case (xa, config) =>
       for {
-        ec <- IO.executionContext
-        _  <- sql"""CREATE TABLE CONVERTED_TRANSACTION(
+        ec            <- IO.executionContext
+        _             <- sql"""CREATE TABLE CONVERTED_TRANSACTION(
                       id IDENTITY PRIMARY KEY,
                       original_transaction_id BIGINT,
                       content BINARY
                     )""".update.run.transact(xa)
-        _  <- BlazeServerBuilder[IO](ec)
-                .bindHttp(config.httpPort.value, "localhost")
-                .withHttpApp(new HttpConverterService(xa).routes.orNotFound)
-                .serve
-                .compile
-                .drain
+        httpApp        = new HttpConverterService(xa).routes.orNotFound
+        httpAppLogging = RequestLogger.httpApp(logHeaders = true, logBody = true)(httpApp)
+        _             <- BlazeServerBuilder[IO](ec)
+                           .bindHttp(config.httpPort.value, "localhost")
+                           .withHttpApp(httpAppLogging)
+                           .serve
+                           .compile
+                           .drain
       } yield ExitCode.Success
     }
 
