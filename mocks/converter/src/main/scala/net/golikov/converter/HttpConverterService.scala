@@ -1,17 +1,17 @@
-package net.golikov
+package net.golikov.converter
 
 import cats.effect.Async
 import cats.free.Trampoline
 import cats.implicits._
 import doobie.h2.H2Transactor
-import doobie.implicits.{toDoobieStreamOps, _}
+import doobie.implicits.{ toDoobieStreamOps, _ }
 import doobie.quill.DoobieContext
 import io.circe._
 import io.circe.parser._
-import io.getquill.{SnakeCase, idiom => _}
+import io.getquill.{ SnakeCase, idiom => _ }
 import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{HttpRoutes, ApiVersion => _}
+import org.http4s.{ HttpRoutes, ApiVersion => _ }
 
 import scala.Array.emptyByteArray
 

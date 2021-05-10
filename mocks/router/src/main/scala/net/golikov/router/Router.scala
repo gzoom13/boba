@@ -1,4 +1,4 @@
-package net.golikov
+package net.golikov.router
 
 import cats.effect.{ Async, _ }
 import doobie.h2.H2Transactor
@@ -6,7 +6,7 @@ import doobie.h2.H2Transactor.newH2Transactor
 import doobie.implicits.{ toSqlInterpolator, _ }
 import doobie.util.ExecutionContexts._
 import io.getquill.{ idiom => _ }
-import net.golikov.RouterConfig.configR
+import RouterConfig.configR
 import org.http4s.client.JavaNetClientBuilder
 import org.http4s.implicits._
 import org.http4s.server.blaze._
