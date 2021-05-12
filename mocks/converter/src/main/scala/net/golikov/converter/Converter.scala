@@ -35,7 +35,7 @@ object Converter extends IOApp {
         httpApp        = new HttpConverterService(xa).routes.orNotFound
         httpAppLogging = RequestLogger.httpApp(logHeaders = true, logBody = true)(httpApp)
         _             <- BlazeServerBuilder[IO](ec)
-                           .bindHttp(config.httpPort.value, "localhost")
+                           .bindHttp(config.httpPort.value, "0.0.0.0")
                            .withHttpApp(httpAppLogging)
                            .serve
                            .compile

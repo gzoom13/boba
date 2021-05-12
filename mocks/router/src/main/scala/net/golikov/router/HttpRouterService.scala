@@ -16,7 +16,8 @@ import org.http4s.{ EntityEncoder, HttpRoutes, Request, Uri, ApiVersion => _ }
 
 class HttpRouterService[F[_]](xa: H2Transactor[F], config: RouterConfig, httpClient: Client[F])(implicit F: Async[F]) extends Http4sDsl[F] {
 
-  private val converterUri = Uri(scheme = http.some, authority = Authority(port = config.converterPort.value.some).some) / "transactions"
+  private val converterUri =
+    Uri(scheme = http.some, authority = Authority(host = Uri.RegName("converter_mock"), port = config.converterPort.value.some).some) / "transactions"
 
   private val ctx = new DoobieContext.H2[SnakeCase](SnakeCase)
   import ctx._

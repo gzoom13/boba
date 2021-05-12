@@ -32,7 +32,7 @@ object Router extends IOApp {
         httpClient       = JavaNetClientBuilder[IO].create
         httpClientLogged = Logger.apply(logHeaders = true, logBody = true)(httpClient)
         _               <- BlazeServerBuilder[IO](ec)
-                             .bindHttp(config.httpPort.value, "localhost")
+                             .bindHttp(config.httpPort.value, "0.0.0.0")
                              .withHttpApp(new HttpRouterService(xa, config, httpClientLogged).routes.orNotFound)
                              .serve
                              .compile

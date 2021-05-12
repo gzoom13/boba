@@ -30,8 +30,6 @@ object Settings {
       fork in Global := true,
       resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
 
-      mainClass in Compile := Some("net.golikov.Main"),
-
       addCompilerPlugin(contextApplied),
       addCompilerPlugin(kindProjector),
 
