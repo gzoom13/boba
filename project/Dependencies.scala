@@ -21,6 +21,8 @@ object Dependencies {
 
   val fs2Core = "co.fs2" %% "fs2-core" % Version.fs2Core
 
+  val fs2Kafka = "com.github.fd4s" %% "fs2-kafka" % Version.fs2Kafka
+
   val doobie = Seq(
     "org.tpolecat" %% "doobie-core"  % Version.doobie,
     "org.tpolecat" %% "doobie-h2"    % Version.doobie,
@@ -56,6 +58,7 @@ object Version {
   val zioCats        = "2.4.0.0"
   val slf4j          = "1.7.30"
   val fs2Core        = "3.0.2"
+  val fs2Kafka       = "2.0.0"
   val doobie         = "1.0.0-M2"
   val quill          = "3.7.1"
   val http4s         = "1.0.0-M21"
