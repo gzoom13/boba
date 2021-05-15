@@ -1,4 +1,4 @@
-package net.golikov.converter
+package net.golikov.boba.mock.converter
 
 import cats.effect.{ Async, _ }
 import doobie.h2.H2Transactor
@@ -28,10 +28,10 @@ object Converter extends IOApp {
       for {
         ec            <- IO.executionContext
         _             <- sql"""CREATE TABLE CONVERTED_TRANSACTION(
-                      id IDENTITY PRIMARY KEY,
-                      original_transaction_id BIGINT,
-                      content BINARY
-                    )""".update.run.transact(xa)
+                           id IDENTITY PRIMARY KEY,
+                           original_transaction_id BIGINT,
+                           content BINARY
+                         )""".update.run.transact(xa)
         httpApp        = new HttpConverterService(xa).routes.orNotFound
         httpAppLogging = RequestLogger.httpApp(logHeaders = true, logBody = true)(httpApp)
         _             <- BlazeServerBuilder[IO](ec)

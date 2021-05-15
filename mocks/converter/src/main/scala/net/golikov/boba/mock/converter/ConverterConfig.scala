@@ -1,4 +1,4 @@
-package net.golikov.converter
+package net.golikov.boba.mock.converter
 
 import cats.effect.{ Async, Resource }
 import cats.implicits.toTraverseOps

@@ -1,4 +1,4 @@
-package net.golikov.converter
+package net.golikov.boba.mock.converter
 
 import io.circe.generic.semiauto.{ deriveDecoder, deriveEncoder }
 import io.circe.{ Decoder, Encoder }

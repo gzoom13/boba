@@ -1,4 +1,4 @@
-package net.golikov.router
+package net.golikov.boba.mock.router
 
 import cats.effect.{ Async, Resource }
 import cats.implicits.{ catsSyntaxTuple2Parallel, toTraverseOps }
@@ -6,7 +6,7 @@ import ciris._
 import io.estatico.newtype.Coercible
 import io.estatico.newtype.macros.newtype
 import io.estatico.newtype.ops._
-import RouterConfig.HttpPort
+import net.golikov.boba.mock.router.RouterConfig.HttpPort
 
 case class RouterConfig(httpPort: HttpPort, converterPort: HttpPort)
 

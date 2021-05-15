@@ -11,11 +11,10 @@ lazy val routerMock = (project in file("mocks/router"))
   .enablePlugins(JavaAppPackaging, AshScriptPlugin, DockerPlugin)
   .settings(commonSettings)
   .settings(libraryDependencies ++= routerMockDependencies)
-  .settings(mainClass in Compile := Some("net.golikov.router.Router"))
+  .settings(Compile / mainClass := Some("net.golikov.boba.mock.router.Router"))
 
 lazy val converterMock = (project in file("mocks/converter"))
   .enablePlugins(JavaAppPackaging, AshScriptPlugin, DockerPlugin)
   .settings(commonSettings)
   .settings(libraryDependencies ++= converterMockDependencies)
-  .settings(mainClass in Compile := Some("net.golikov.converter.Converter"))
-
+  .settings(Compile / mainClass := Some("net.golikov.boba.mock.converter.Converter"))

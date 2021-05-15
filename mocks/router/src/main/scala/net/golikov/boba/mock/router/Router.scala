@@ -1,4 +1,4 @@
-package net.golikov.router
+package net.golikov.boba.mock.router
 
 import cats.effect.{ Async, _ }
 import doobie.h2.H2Transactor
@@ -18,7 +18,7 @@ object Router extends IOApp {
   def transactorR[F[_]: Async]: Resource[F, H2Transactor[F]] =
     for {
       ec <- fixedThreadPool[F](32)
-      xa <- newH2Transactor("jdbc:h2:mem:router;DB_CLOSE_DELAY=-1", "sa", "", ec)
+      xa <- newH2Transactor("jdbc:h2:tcp://router_mock_db:1521/router", "sa", "", ec)
     } yield xa
 
   def run(args: List[String]): IO[ExitCode] =

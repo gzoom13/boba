@@ -1,4 +1,4 @@
-package net.golikov.router
+package net.golikov.boba.mock.router
 
 import cats.effect.Async
 import cats.implicits._
@@ -6,7 +6,6 @@ import doobie.h2.H2Transactor
 import doobie.implicits.{ toDoobieStreamOps, _ }
 import doobie.quill.DoobieContext
 import io.getquill.{ SnakeCase, idiom => _ }
-import Transfer._
 import org.http4s.Uri.Authority
 import org.http4s.Uri.Scheme.http
 import org.http4s.circe.CirceEntityCodec.circeEntityEncoder
