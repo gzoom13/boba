@@ -8,8 +8,9 @@ object Settings {
 
   val commonSettings = {
     Seq(
-      scalaVersion := "2.13.4",
+      scalaVersion := "2.13.5",
       scalacOptions := Seq(
+        "-Xsource:3",
         "-Ymacro-annotations",
         "-deprecation",
         "-encoding", "utf-8",
@@ -22,14 +23,12 @@ object Settings {
         "-Xcheckinit",
         "-Xfatal-warnings"
       ),
-      version := (version in ThisBuild).value,
+      version := (ThisBuild / version).value,
       scalafmtOnCompile := true,
 
       cancelable in Global := true,
       fork in Global := true,
       resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
-
-      mainClass in Compile := Some("net.golikov.Main"),
 
       addCompilerPlugin(contextApplied),
       addCompilerPlugin(kindProjector),
@@ -39,8 +38,8 @@ object Settings {
     )
   }
 
-  val serviceDependencies = List(cats, catsEffect, neutronCore, slf4j, zioCats) ++ zioTest
-  val routerDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
-  val serverDependencies = List(neutronCirce, ciris) ++ zio
-  val domainDependencies = List(newtype) ++ circe
+  val routerMockDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
+  val converterMockDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
+  val traceEngineDependencies = List(slf4j, cats, catsEffect, ciris, newtype, fs2Kafka) ++ http4s ++ circe
+  val pumpDependencies = List(slf4j, cats, catsEffect, ciris, newtype, fs2Kafka) ++ circe ++ doobie
 }
