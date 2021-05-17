@@ -10,32 +10,40 @@ import fs2.kafka._
 import io.circe.parser.decode
 import io.circe.syntax._
 import io.circe.{ Decoder, Encoder }
-import net.golikov.boba.domain.{ SqlQueryAction, TraceContext }
+import net.golikov.boba.domain.{ SqlQuery, TraceContext }
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.UUID
 
 object Pump extends IOApp {
 
-  implicit def injectSerializer[F[_]: Sync, A: Encoder: Decoder]: Serializer[F, A] =
+  implicit def circeSerializer[F[_]: Sync, A: Encoder]: Serializer[F, A] =
     Serializer.lift[F, A](_.asJson.noSpaces.getBytes(UTF_8).pure[F])
 
-  implicit def injectDeserializer[F[_]: Sync, A: Encoder: Decoder]: Deserializer[F, A] =
+  implicit def circeDeserializer[F[_]: Sync, A: Decoder]: Deserializer[F, A] =
     Deserializer.lift(bytes => decode[A](new String(bytes, UTF_8)).liftTo[F])
 
-  def routerTransactor[F[_]: Async]: Resource[F, H2Transactor[F]] =
+  def routerTransactor[F[_]: Async](jdbcUrl: String, user: String, password: String): Resource[F, H2Transactor[F]] =
     for {
       ec <- fixedThreadPool[F](2)
-      xa <- newH2Transactor("jdbc:h2:tcp://router_mock_db:1521/router", "sa", "", ec)
+      xa <- newH2Transactor(jdbcUrl, user, password, ec)
     } yield xa
 
   override def run(args: List[String]): IO[ExitCode] = {
 
-    def processRecord[F[_]: Sync](xa: H2Transactor[F], record: ConsumerRecord[UUID, (SqlQueryAction, TraceContext)]): F[Seq[TraceContext]] =
+    def processRecord[F[_]: Async](record: ConsumerRecord[UUID, (SqlQuery, TraceContext)]): F[Seq[TraceContext]] =
       (for {
-        con <- xa.connect(xa.kernel)
-        ps  <- Resource.fromAutoCloseable(Sync[F].blocking(con.prepareStatement(record.value._1.sql)))
-        rs  <- Resource.fromAutoCloseable(Sync[F].blocking(ps.executeQuery()))
+        map    <- Resource.pure(record.value._2.map)
+        params <- Resource.eval(
+                    (map.get("jdbcUrl"), map.get("user"), map.get("password"))
+                      .tupled
+                      .toRight(new IllegalArgumentException(s"Cannot find router connection parameters in $map"))
+                      .liftTo[F]
+                  )
+        xa     <- routerTransactor[F](params._1, params._2, params._3)
+        con    <- xa.connect(xa.kernel)
+        ps     <- Resource.fromAutoCloseable(Sync[F].blocking(con.prepareStatement(record.value._1.sql)))
+        rs     <- Resource.fromAutoCloseable(Sync[F].blocking(ps.executeQuery()))
       } yield rs).use { rs =>
         for {
           metadata    <- Sync[F].blocking(rs.getMetaData)
@@ -55,32 +63,32 @@ object Pump extends IOApp {
       }
 
     (for {
-      xa               <- routerTransactor[IO]
       bootstrapServers <- env("KAFKA_BOOTSTRAP_SERVERS").default("kafka:9092").resource[IO]
       consumerSettings  =
-        ConsumerSettings[IO, UUID, (SqlQueryAction, TraceContext)]
+        ConsumerSettings[IO, UUID, (SqlQuery, TraceContext)]
           .withAutoOffsetReset(AutoOffsetReset.Earliest)
           .withBootstrapServers(bootstrapServers)
           .withGroupId("group")
       producerSettings  =
         ProducerSettings[IO, UUID, TraceContext]
           .withBootstrapServers(bootstrapServers)
-    } yield (consumerSettings, producerSettings, xa)).use { case (consumerSettings, producerSettings, xa) =>
-      def stream(xa: H2Transactor[IO]): fs2.Stream[IO, Unit] =
+    } yield (consumerSettings, producerSettings)).use { case (consumerSettings, producerSettings) =>
+      def stream(): fs2.Stream[IO, Unit] =
         KafkaConsumer
           .stream(consumerSettings)
           .evalTap(_.subscribeTo("sql-query-actions"))
           .flatMap(_.stream)
           .observe(_.printlns)
           .mapAsync(25) { committable =>
-            processRecord(xa, committable.record).map(value =>
-              ProducerRecords(value.map(ProducerRecord("sql-query-response", committable.record.key, _))))
+            processRecord[IO](committable.record).map(value =>
+              ProducerRecords(value.map(ProducerRecord("sql-query-response", committable.record.key, _)))
+            )
           }
           .observe(_.printlns)
           .through(KafkaProducer.pipe(producerSettings))
           .map(_.passthrough)
 
-      stream(xa).compile.drain.map(_ => ExitCode.Success)
+      stream().compile.drain.map(_ => ExitCode.Success)
     }
 
   }

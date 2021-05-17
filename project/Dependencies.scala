@@ -49,6 +49,8 @@ object Dependencies {
 
   val contextApplied = "org.augustjune" %% "context-applied" % Version.contextApplied
   val kindProjector  = "org.typelevel"  %% "kind-projector"  % Version.kindProjector cross CrossVersion.full
+
+  val scalaTest = "org.scalatest" %% "scalatest" % Version.scalaTest % "test"
 }
 
 object Version {
@@ -68,4 +70,5 @@ object Version {
   val newtype        = "0.4.4"
   val neutron        = "0.0.4"
   val contextApplied = "0.1.4"
+  val scalaTest      = "3.2.7"
 }

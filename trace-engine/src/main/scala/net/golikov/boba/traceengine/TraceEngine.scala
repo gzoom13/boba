@@ -1,41 +1,100 @@
 package net.golikov.boba.traceengine
 
-import cats.effect.{ ExitCode, IO, IOApp, Resource, _ }
+import cats.effect.{ ExitCode, IO, IOApp, _ }
 import cats.implicits._
-import fs2.kafka.{ ProducerRecords, _ }
-import net.golikov.boba.domain.SqlQueryAction
-import net.golikov.boba.traceengine.TraceEngineConfig.configR
+import fs2.kafka._
 import io.circe._
 import io.circe.parser.decode
 import io.circe.syntax._
-import net.golikov.boba.domain.TraceContext
+import net.golikov.boba.domain.{ Next, SqlQuery, TraceContext }
+import net.golikov.boba.traceengine.HttpTraceEngineService._
+import net.golikov.boba.traceengine.TraceEngineConfig.configR
+import org.http4s.implicits.http4sKleisliResponseSyntaxOptionT
+import org.http4s.server.blaze.BlazeServerBuilder
+import org.http4s.server.middleware.Logger
 
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 object TraceEngine extends IOApp {
 
   import java.nio.charset.StandardCharsets.UTF_8
 
-  implicit def injectSerializer[F[_]: Sync, A: Encoder: Decoder]: Serializer[F, A] =
+  implicit def circeSerializer[F[_]: Sync, A: Encoder]: Serializer[F, A] =
     Serializer.lift[F, A](_.asJson.noSpaces.getBytes(UTF_8).pure[F])
 
-  implicit def injectDeserializer[F[_]: Sync, A: Encoder: Decoder]: Deserializer[F, A] =
+  implicit def circeDeserializer[F[_]: Sync, A: Decoder]: Deserializer[F, A] =
     Deserializer.lift(bytes => decode[A](new String(bytes, UTF_8)).liftTo[F])
 
   def run(args: List[String]): IO[ExitCode] =
     (for {
       config          <- configR[IO]
       producerSettings =
-        ProducerSettings[IO, UUID, (SqlQueryAction, TraceContext)]
+        ProducerSettings[IO, UUID, (SqlQuery, TraceContext)]
           .withBootstrapServers(config.kafkaBootstrapServers.value)
+      consumerSettings =
+        ConsumerSettings[IO, UUID, TraceContext]
+          .withAutoOffsetReset(AutoOffsetReset.Earliest)
+          .withBootstrapServers(config.kafkaBootstrapServers.value)
+          .withGroupId("engine")
       producer        <- KafkaProducer.resource(producerSettings)
-    } yield (config, producer)).use { case (config, producer) =>
-      val requestId = UUID.randomUUID()
-      val value     = ProducerRecord("sql-query-actions", requestId, (SqlQueryAction("select 5551"), TraceContext(Map.empty)))
-      val value1    = ProducerRecords.one(value)
-      for {
-        _ <- producer.produce(value1).flatten
-      } yield ExitCode.Success
+      subscriptions   <- Resource.pure(new ConcurrentHashMap[UUID, Subscriptions]())
+      traceStorage    <- Resource.pure(new ConcurrentHashMap[UUID, Seq[TraceContext]]())
+    } yield (config, producer, consumerSettings, subscriptions, traceStorage)).use {
+      case (config, producer, consumerSettings, subscriptions, traceStorage) =>
+        for {
+          ec           <- IO.executionContext
+          service       = new HttpTraceEngineService[IO](producer, subscriptions, traceStorage)
+          httpApp       = service.routes.orNotFound
+          httpAppLogged = Logger.httpApp(logHeaders = true, logBody = true)(httpApp)
+          _            <- fs2
+                            .Stream(
+                              KafkaConsumer
+                                .stream(consumerSettings)
+                                .evalTap(_.subscribeTo("sql-query-response"))
+                                .flatMap(_.stream)
+                                .observe(_.printlns)
+                                .mapAsync(25)(committable =>
+                                  IO.delay(Option(subscriptions.get(committable.record.key))).flatMap {
+                                    case Some(Subscriptions(_, checkpoint @ (traceId, TraceContext(oldMap), _), queue, _)) =>
+                                      for {
+                                        received  <- IO.pure(committable.record.value)
+                                        newContext = NewContext(traceId, TraceContext(oldMap ++ received.map))
+                                        _         <- service.addContext(newContext)
+                                        _         <- IO.println(s"Processing head $checkpoint and queue $queue")
+                                        result     = queue
+                                                       // TODO: simplify with fold to (TraceContext, Option(Subscriptions))
+                                                       .scanRight(newContext.some.asRight[(Subscriptions, TraceContext)]) {
+                                                         case ((traceId, TraceContext(oldMap), next @ Next(_, tail)), context) =>
+                                                           context match {
+                                                             case Left((subs, TraceContext(newMap)))               =>
+                                                               val newContext = TraceContext(oldMap ++ newMap)
+                                                               (subs.add(traceId, newContext, next), newContext).asLeft
+                                                             case Right(Some(NewContext(_, TraceContext(newMap)))) =>
+                                                               val newContext = TraceContext(oldMap ++ newMap)
+                                                               tail(newContext)
+                                                                 .map(collectTrace(traceId, newContext, _))
+                                                                 .flatSequence
+                                                                 .leftMap((_, newContext))
+                                                             case Right(None)                                      =>
+                                                               None.asRight
+                                                           }
+                                                       }
+                                        _         <- IO.println(s"Next steps $result")
+                                        _         <- service.save(result.head.leftMap(_._1))
+                                      } yield ()
+                                    case None                                                                              => IO.unit
+                                  }
+                                ),
+                              BlazeServerBuilder[IO](ec)
+                                .bindHttp(config.httpPort.value, "0.0.0.0")
+                                .withHttpApp(httpAppLogged)
+                                .serve
+                            )
+                            .parJoinUnbounded
+                            .compile
+                            .drain
+        } yield ExitCode.Success
     }
 
 }

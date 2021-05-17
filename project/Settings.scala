@@ -40,6 +40,6 @@ object Settings {
 
   val routerMockDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
   val converterMockDependencies = List(slf4j, cats, catsEffect, h2, ciris, newtype) ++ doobie ++ http4s ++ circe
-  val traceEngineDependencies = List(slf4j, cats, catsEffect, ciris, newtype, fs2Kafka) ++ http4s ++ circe
+  val traceEngineDependencies = List(slf4j, cats, catsEffect, ciris, newtype, fs2Kafka, scalaTest) ++ http4s ++ circe
   val pumpDependencies = List(slf4j, cats, catsEffect, ciris, newtype, fs2Kafka) ++ circe ++ doobie
 }

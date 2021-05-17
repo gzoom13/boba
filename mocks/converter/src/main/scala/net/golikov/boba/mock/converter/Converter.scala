@@ -17,7 +17,7 @@ object Converter extends IOApp {
   def transactorR[F[_]: Async]: Resource[F, H2Transactor[F]] =
     for {
       ec <- fixedThreadPool[F](32)
-      xa <- newH2Transactor("jdbc:h2:mem:converter;DB_CLOSE_DELAY=-1", "sa", "", ec)
+      xa <- newH2Transactor("jdbc:h2:tcp://converter_mock_db:1522/router", "sa", "", ec)
     } yield xa
 
   def run(args: List[String]): IO[ExitCode] =

@@ -18,8 +18,7 @@ and configure how information should be retrieved from it).
 Use below commands to build everything, start in docker and send message to router
 
 ```bash
-sbt docker:publishLocal
+sbt trace-engine:docker:publishLocal
 docker-compose up -d
-ROUTER_IP=$(docker network inspect -f '{{json .Containers}}' boba_default | jq '.[] | select(.Name | contains("router_mock_1")) | .IPv4Address' | sed -e 's/"\(.*\)\/.*"/\1/' )
-curl -v -X POST http://$ROUTER_IP:8081/transfers --data-binary '{"field": "value2", "id": 12}' -H "Content-Type:  application/octet-stream"
+./test.sh
 ```

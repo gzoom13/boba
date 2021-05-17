@@ -24,6 +24,14 @@ services:
     environment:
       - "CONVERTER_HTTP_PORT=8082"
 
+  converter_mock_db:
+    image: oscarfonts/h2
+    restart: unless-stopped
+    ports:
+      - "1522:1522"
+    environment:
+      - "H2_OPTIONS=-ifNotExists"
+
   zookeeper:
     image: wurstmeister/zookeeper
     ports:
