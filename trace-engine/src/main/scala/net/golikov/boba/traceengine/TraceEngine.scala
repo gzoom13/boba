@@ -6,7 +6,7 @@ import fs2.kafka._
 import io.circe._
 import io.circe.parser.decode
 import io.circe.syntax._
-import net.golikov.boba.domain.{ Next, SqlQuery, SqlQueryTemplate, TraceContext }
+import net.golikov.boba.domain.{ SqlQuery, TraceContext }
 import net.golikov.boba.traceengine.HttpTraceEngineService._
 import net.golikov.boba.traceengine.TraceEngineConfig.configR
 import net.golikov.boba.traceengine.subscription.{ AwaitedCheckpoint, CheckpointSubscriptions, WaitingStage }
@@ -57,33 +57,25 @@ object TraceEngine extends IOApp {
                                 .observe(_.printlns)
                                 .mapAsync(25)(committable =>
                                   IO.delay(Option(subscriptions.get(committable.record.key))).flatMap {
-                                    case Some(CheckpointSubscriptions(_, checkpoint @ AwaitedCheckpoint(traceId, TraceContext(oldMap), _), queue, _)) =>
+                                    case Some(CheckpointSubscriptions(_, checkpoint @ AwaitedCheckpoint(traceId, TraceContext(oldMap), _), stacks, _)) =>
                                       for {
                                         received  <- IO.pure(committable.record.value)
                                         newContext = NewContext(traceId, TraceContext(oldMap ++ received.map))
                                         _         <- service.addContext(newContext)
-                                        _         <- IO.println(s"Processing head $checkpoint and queue $queue")
-                                        result     = queue
-                                                       // TODO: simplify with fold to (TraceContext, Option(Subscriptions))
-                                                       .foldRight(newContext.some.asRight[(CheckpointSubscriptions, TraceContext)]) {
-                                                         case (WaitingStage(traceId, TraceContext(oldMap), next @ Next(_, tail)), context) =>
-                                                           context match {
-                                                             case Left((subs, TraceContext(newMap)))               =>
-                                                               val newContext = TraceContext(oldMap ++ newMap)
-                                                               (subs.add(traceId, newContext, next), newContext).asLeft
-                                                             case Right(Some(NewContext(_, TraceContext(newMap)))) =>
-                                                               val newContext = TraceContext(oldMap ++ newMap)
-                                                               tail(newContext)
-                                                                 .map(collectTrace(traceId, newContext, _))
-                                                                 .flatSequence
-                                                                 .leftMap((_, newContext))
-                                                             case Right(None)                                      =>
-                                                               None.asRight
-                                                           }
-                                                       }
-                                        _         <- service.save(result.leftMap(_._1))
+                                        _         <- IO.println(s"Processing head $checkpoint and stacks $stacks")
+                                        results    =
+                                          stacks
+                                            .map(_.stack)
+                                            .map(stack =>
+                                              stack
+                                                .foldRight(emptyResults.map(_ => List(newContext))) { case (WaitingStage(traceId, fork), headResults) =>
+                                                  combine(collectFork(traceId, fork, headResults), headResults)
+                                                }
+                                            )
+                                        _         <- results.map(service.save).sequence
                                       } yield ()
-                                    case None                                                                                                         => IO.unit
+                                    case None                                                                                                          =>
+                                      IO.unit
                                   }
                                 ),
                               BlazeServerBuilder[IO](ec)

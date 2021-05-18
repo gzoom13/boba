@@ -3,7 +3,7 @@ package net.golikov.boba.traceengine
 import cats.effect._
 import cats.effect.std.Console
 import cats.implicits._
-import fs2.kafka.KafkaProducer
+import fs2.kafka.{ KafkaProducer, ProducerRecords }
 import io.circe.parser.parse
 import net.golikov.boba.domain._
 import net.golikov.boba.traceengine.HttpTraceEngineService._
@@ -42,15 +42,14 @@ class HttpTraceEngineService[F[+_]: Async: Console](
       } yield ()) *> Created()
   }
 
-  def save(value: Either[CheckpointSubscriptions, Option[NewContext]]): F[Either[CheckpointSubscriptions, Seq[TraceContext]]] =
+  def save(value: (Seq[CheckpointSubscriptions], Seq[NewContext])): F[Unit] =
     value match {
-      case Left(subs)           =>
-        Sync[F]
-          .delay(subscriptions.put(subs.requestId, subs))
-          .flatTap(_ => Sync[F].delay(subscriptions.get(subs.requestId)).map(_.records).flatMap(producer.produce(_).flatten))
-          .map(_.asLeft)
-      case Right(Some(context)) => addContext(context).map(_.asRight)
-      case Right(None)          => Sync[F].pure(Seq().asRight)
+      case (allSubs, contexts) =>
+        for {
+          _ <- contexts.map(context => addContext(context)).sequence
+          _ <- allSubs.map(subs => Sync[F].delay(subscriptions.put(subs.requestId, subs))).sequence
+          _ <- producer.produce(ProducerRecords(allSubs.map(_.record))).flatten
+        } yield ()
     }
 }
 
@@ -69,25 +68,27 @@ object HttpTraceEngineService {
   )
 
   def preconfiguredTemplate(transferId: Long): TraceTemplate =
-    Next(
-      Next(
+    Fork(
+      Fork(
         Checkpoint(
           SqlQueryTemplate(
-            "select id as \"transactionId\", UTF8TOSTRING(content) as \"originalContent\" from transfer where id = " + transferId.toString
+            "select id as \"transferId\", UTF8TOSTRING(content) as \"originalContent\" from transfer where id = " + transferId.toString
           )
         ),
         _ =>
-          MapContext(c =>
-            c.map
-              .get("originalContent")
-              .toRight(new IllegalArgumentException("Field \"originalContent\" not found"))
-              .flatMap(parse)
-              .flatMap(_.hcursor.downField("id").as[Long])
-              .fold(
-                error => c.copy(map = c.map + ("error" -> error.getMessage)),
-                transactionId => c.copy(map = c.map + ("transactionId" -> transactionId.toString))
-              )
-          ).some
+          Seq(
+            MapContext(c =>
+              c.map
+                .get("originalContent")
+                .toRight(new IllegalArgumentException("Field \"originalContent\" not found"))
+                .flatMap(parse)
+                .flatMap(_.hcursor.downField("id").as[Long])
+                .fold(
+                  error => c.copy(map = c.map + ("error" -> error.getMessage)),
+                  transactionId => c.copy(map = c.map + ("transactionId" -> transactionId.toString))
+                )
+            )
+          )
       ),
       _.map
         .get("transactionId")
@@ -99,26 +100,40 @@ object HttpTraceEngineService {
           )
         )
         .map(Checkpoint(_))
-        .map(checkpoint => Next(MapContext(c => TraceContext(c.map ++ converterDb)), _ => Some(checkpoint)))
+        .map(checkpoint => Fork(MapContext(c => TraceContext(c.map ++ converterDb)), _ => Seq(checkpoint)))
+        .toList
     )
 
-  def collectTrace(traceId: UUID, context: TraceContext, template: TraceTemplate): Either[CheckpointSubscriptions, Option[NewContext]] = {
-    def collectT(context: TraceContext, template: TraceTemplate): Either[CheckpointSubscriptions, Option[NewContext]] =
+  type Results = (List[CheckpointSubscriptions], List[NewContext])
+  val emptyResults: Results = (List(), List())
+
+  def combine(r1: Results, r2: Results): Results = (r1._1 ++ r2._1, r1._2 ++ r2._2)
+
+  def collectTrace(traceId: UUID, context: TraceContext, template: TraceTemplate): Results = {
+    def collectT(context: TraceContext, template: TraceTemplate): Results =
       template match {
-        case currTemplate @ Next(head, next) =>
-          collectT(context, head) match {
-            case Left(subs)     => subs.add(traceId, context, currTemplate).asLeft
-            case Right(results) =>
-              results
-                .map(_.context)
-                .map(headResult => next(headResult).map(template => collectT(headResult, template)).flatSequence)
-                .flatSequence
-          }
-        case MapContext(f)                   => Some(NewContext(traceId, f(context))).asRight
-        case checkpoint: Checkpoint          => CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint).asLeft
+        case currTemplate @ Fork(head, _) =>
+          collectFork(traceId, currTemplate, collectT(context, head))
+        case MapContext(f)                => (List(), List(NewContext(traceId, f(context))))
+        case checkpoint: Checkpoint       => (List(CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint)), List())
       }
 
     collectT(context, template)
   }
 
+  def collectFork(
+    traceId: UUID,
+    currTemplate: Fork,
+    headResults: Results
+  ): Results =
+    headResults match {
+      case (headSubs, headResults) =>
+        headResults
+          .map(_.context)
+          .map(headResult =>
+            currTemplate.next(headResult).map(template => collectTrace(traceId, headResult, template)).foldLeft(emptyResults)(combine)
+          )
+          .foldLeft(emptyResults)(combine)
+          .leftMap(_ ++ headSubs.map(_.addToAllStacks(traceId, currTemplate)))
+    }
 }

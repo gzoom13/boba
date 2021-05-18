@@ -1,19 +1,15 @@
 package net.golikov.boba.domain
 
-import io.circe.{ Decoder, Encoder }
-import io.circe.generic.semiauto.{ deriveDecoder, deriveEncoder }
-
-import java.time.OffsetDateTime
+import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
+import io.circe.{Decoder, Encoder}
 
 sealed trait TraceTemplate
 
-case class Next(head: TraceTemplate, next: TraceContext => Option[TraceTemplate]) extends TraceTemplate
-case class Checkpoint(queryAction: QueryTemplate)                                 extends TraceTemplate
-case class MapContext(f: TraceContext => TraceContext)                            extends TraceTemplate
+case class Fork(head: TraceTemplate, next: TraceContext => Seq[TraceTemplate]) extends TraceTemplate
+case class Checkpoint(queryAction: QueryTemplate)                              extends TraceTemplate
+case class MapContext(f: TraceContext => TraceContext)                         extends TraceTemplate
 
-sealed trait Action
-
-sealed trait QueryTemplate extends Action
+sealed trait QueryTemplate
 
 case class SqlQueryTemplate(sql: String) extends QueryTemplate
 

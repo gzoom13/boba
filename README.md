@@ -11,7 +11,6 @@ and configure how information should be retrieved from it).
 
 - Router - receives files, stores their copies locally and then routes to converter
 - Converter - converts the file into different format
-- Bulker - bulks multiple files into single one
 
 ## Test
 
