@@ -7,6 +7,7 @@ import fs2.kafka.KafkaProducer
 import io.circe.parser.parse
 import net.golikov.boba.domain._
 import net.golikov.boba.traceengine.HttpTraceEngineService._
+import net.golikov.boba.traceengine.subscription.CheckpointSubscriptions
 import org.http4s.HttpRoutes
 import org.http4s.dsl.Http4sDsl
 
@@ -15,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class HttpTraceEngineService[F[+_]: Async: Console](
   producer: KafkaProducer.Metrics[F, UUID, (SqlQuery, TraceContext)],
-  subscriptions: ConcurrentHashMap[UUID, Subscriptions],
+  subscriptions: ConcurrentHashMap[UUID, CheckpointSubscriptions],
   traceStorage: ConcurrentHashMap[UUID, Seq[TraceContext]]
 ) extends Http4sDsl[F] {
 
@@ -41,7 +42,7 @@ class HttpTraceEngineService[F[+_]: Async: Console](
       } yield ()) *> Created()
   }
 
-  def save(value: Either[Subscriptions, Option[NewContext]]): F[Either[Subscriptions, Seq[TraceContext]]] =
+  def save(value: Either[CheckpointSubscriptions, Option[NewContext]]): F[Either[CheckpointSubscriptions, Seq[TraceContext]]] =
     value match {
       case Left(subs)           =>
         Sync[F]
@@ -99,8 +100,8 @@ object HttpTraceEngineService {
         .map(checkpoint => Next(MapContext(c => TraceContext(c.map ++ converterDb)), _ => Some(checkpoint)))
     )
 
-  def collectTrace(traceId: UUID, context: TraceContext, template: TraceTemplate): Either[Subscriptions, Option[NewContext]] = {
-    def collectT(context: TraceContext, template: TraceTemplate): Either[Subscriptions, Option[NewContext]] =
+  def collectTrace(traceId: UUID, context: TraceContext, template: TraceTemplate): Either[CheckpointSubscriptions, Option[NewContext]] = {
+    def collectT(context: TraceContext, template: TraceTemplate): Either[CheckpointSubscriptions, Option[NewContext]] =
       template match {
         case currTemplate @ Next(head, next) =>
           collectT(context, head) match {
@@ -112,7 +113,7 @@ object HttpTraceEngineService {
                 .flatSequence
           }
         case MapContext(f)                   => Some(NewContext(traceId, f(context))).asRight
-        case checkpoint: Checkpoint          => Subscriptions(traceId, context, checkpoint).asLeft
+        case checkpoint: Checkpoint          => CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint).asLeft
       }
 
     collectT(context, template)

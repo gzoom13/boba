@@ -9,6 +9,7 @@ import io.circe.syntax._
 import net.golikov.boba.domain.{ Next, SqlQuery, TraceContext }
 import net.golikov.boba.traceengine.HttpTraceEngineService._
 import net.golikov.boba.traceengine.TraceEngineConfig.configR
+import net.golikov.boba.traceengine.subscription.{ AwaitedCheckpoint, CheckpointSubscriptions, WaitingStage }
 import org.http4s.implicits.http4sKleisliResponseSyntaxOptionT
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.server.middleware.Logger
@@ -38,7 +39,7 @@ object TraceEngine extends IOApp {
           .withBootstrapServers(config.kafkaBootstrapServers.value)
           .withGroupId("engine")
       producer        <- KafkaProducer.resource(producerSettings)
-      subscriptions   <- Resource.pure(new ConcurrentHashMap[UUID, Subscriptions]())
+      subscriptions   <- Resource.pure(new ConcurrentHashMap[UUID, CheckpointSubscriptions]())
       traceStorage    <- Resource.pure(new ConcurrentHashMap[UUID, Seq[TraceContext]]())
     } yield (config, producer, consumerSettings, subscriptions, traceStorage)).use {
       case (config, producer, consumerSettings, subscriptions, traceStorage) =>
@@ -56,7 +57,7 @@ object TraceEngine extends IOApp {
                                 .observe(_.printlns)
                                 .mapAsync(25)(committable =>
                                   IO.delay(Option(subscriptions.get(committable.record.key))).flatMap {
-                                    case Some(Subscriptions(_, checkpoint @ (traceId, TraceContext(oldMap), _), queue, _)) =>
+                                    case Some(CheckpointSubscriptions(_, checkpoint @ AwaitedCheckpoint(traceId, TraceContext(oldMap), _), queue, _)) =>
                                       for {
                                         received  <- IO.pure(committable.record.value)
                                         newContext = NewContext(traceId, TraceContext(oldMap ++ received.map))
@@ -64,8 +65,8 @@ object TraceEngine extends IOApp {
                                         _         <- IO.println(s"Processing head $checkpoint and queue $queue")
                                         result     = queue
                                                        // TODO: simplify with fold to (TraceContext, Option(Subscriptions))
-                                                       .scanRight(newContext.some.asRight[(Subscriptions, TraceContext)]) {
-                                                         case ((traceId, TraceContext(oldMap), next @ Next(_, tail)), context) =>
+                                                       .foldRight(newContext.some.asRight[(CheckpointSubscriptions, TraceContext)]) {
+                                                         case (WaitingStage(traceId, TraceContext(oldMap), next @ Next(_, tail)), context) =>
                                                            context match {
                                                              case Left((subs, TraceContext(newMap)))               =>
                                                                val newContext = TraceContext(oldMap ++ newMap)
@@ -80,10 +81,9 @@ object TraceEngine extends IOApp {
                                                                None.asRight
                                                            }
                                                        }
-                                        _         <- IO.println(s"Next steps $result")
-                                        _         <- service.save(result.head.leftMap(_._1))
+                                        _         <- service.save(result.leftMap(_._1))
                                       } yield ()
-                                    case None                                                                              => IO.unit
+                                    case None                                                                                                         => IO.unit
                                   }
                                 ),
                               BlazeServerBuilder[IO](ec)
