@@ -62,10 +62,9 @@ object HttpTraceEngineService {
   )
 
   val converterDb = Map(
-    "jdbcUrl"      -> "jdbc:h2:tcp://converter_mock_db:1521/router",
-    "user"         -> "sa",
-    "password"     -> "",
-    "testtesttest" -> "testtesttest"
+    "jdbcUrl"  -> "jdbc:h2:tcp://converter_mock_db:1521/router",
+    "user"     -> "sa",
+    "password" -> ""
   )
 
   def preconfiguredTemplate(transferId: Long): TraceTemplate =
