@@ -63,7 +63,7 @@ object HttpTraceEngineService {
   )
 
   val converterDb = Map(
-    "jdbcUrl"  -> "jdbc:h2:tcp://converter_mock_db:1521/router",
+    "jdbcUrl"  -> "jdbc:h2:tcp://converter_mock_db:1521/converter",
     "user"     -> "sa",
     "password" -> ""
   )

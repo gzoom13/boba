@@ -7,6 +7,8 @@ services:
       - "8081:8081"
     environment:
       - "ROUTER_HTTP_PORT=8081"
+    depends_on:
+      - "router_mock_db"
 
   router_mock_db:
     image: oscarfonts/h2
@@ -23,12 +25,14 @@ services:
       - "8082:8082"
     environment:
       - "CONVERTER_HTTP_PORT=8082"
+    depends_on:
+      - "converter_mock_db"
 
   converter_mock_db:
     image: oscarfonts/h2
     restart: unless-stopped
     ports:
-      - "1522:1522"
+      - "1522:1521"
     environment:
       - "H2_OPTIONS=-ifNotExists"
 
