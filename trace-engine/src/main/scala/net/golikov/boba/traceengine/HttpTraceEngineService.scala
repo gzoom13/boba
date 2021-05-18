@@ -114,8 +114,10 @@ object HttpTraceEngineService {
       template match {
         case currTemplate @ Fork(head, _) =>
           collectFork(traceId, currTemplate, collectT(context, head))
-        case MapContext(f)                => (List(), List(NewContext(traceId, f(context))))
-        case checkpoint: Checkpoint       => (List(CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint)), List())
+        case MapContext(f)                =>
+          (List(), List(NewContext(traceId, f(context))))
+        case checkpoint: Checkpoint       =>
+          (List(CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint)), List())
       }
 
     collectT(context, template)
@@ -131,7 +133,10 @@ object HttpTraceEngineService {
         headResults
           .map(_.context)
           .map(headResult =>
-            currTemplate.next(headResult).map(template => collectTrace(traceId, headResult, template)).foldLeft(emptyResults)(combine)
+            currTemplate
+              .next(headResult)
+              .map(template => collectTrace(traceId, headResult, template))
+              .foldLeft(emptyResults)(combine)
           )
           .foldLeft(emptyResults)(combine)
           .leftMap(_ ++ headSubs.map(_.addToAllStacks(traceId, currTemplate)))
