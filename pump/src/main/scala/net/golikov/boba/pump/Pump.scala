@@ -10,7 +10,7 @@ import fs2.kafka._
 import io.circe.parser.decode
 import io.circe.syntax._
 import io.circe.{ Decoder, Encoder }
-import net.golikov.boba.domain.{ SqlQuery, TraceContext }
+import net.golikov.boba.domain.{ SqlQuery, SqlQueryTemplate, TraceContext }
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.UUID
@@ -31,9 +31,9 @@ object Pump extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
 
-    def processRecord[F[_]: Async](record: ConsumerRecord[UUID, (SqlQuery, TraceContext)]): F[Seq[TraceContext]] =
+    def processRecord[F[_]: Async](record: ConsumerRecord[UUID, SqlQuery]): F[Seq[TraceContext]] =
       (for {
-        map    <- Resource.pure(record.value._2.map)
+        map    <- Resource.pure(record.value.context.map)
         params <- Resource.eval(
                     (map.get("jdbcUrl"), map.get("user"), map.get("password"))
                       .tupled
@@ -42,7 +42,7 @@ object Pump extends IOApp {
                   )
         xa     <- routerTransactor[F](params._1, params._2, params._3)
         con    <- xa.connect(xa.kernel)
-        ps     <- Resource.fromAutoCloseable(Sync[F].blocking(con.prepareStatement(record.value._1.sql)))
+        ps     <- Resource.fromAutoCloseable(Sync[F].blocking(con.prepareStatement(record.value.template.sql)))
         rs     <- Resource.fromAutoCloseable(Sync[F].blocking(ps.executeQuery()))
       } yield rs).use { rs =>
         for {
@@ -65,7 +65,7 @@ object Pump extends IOApp {
     (for {
       bootstrapServers <- env("KAFKA_BOOTSTRAP_SERVERS").default("kafka:9092").resource[IO]
       consumerSettings  =
-        ConsumerSettings[IO, UUID, (SqlQuery, TraceContext)]
+        ConsumerSettings[IO, UUID, SqlQuery]
           .withAutoOffsetReset(AutoOffsetReset.Earliest)
           .withBootstrapServers(bootstrapServers)
           .withGroupId("group")

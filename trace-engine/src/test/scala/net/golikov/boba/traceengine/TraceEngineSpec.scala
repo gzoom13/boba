@@ -30,11 +30,13 @@ class TraceEngineSpec extends AnyFlatSpec with should.Matchers {
 
   it should "return subscriptions" in {
     val sql      = "some sql query"
-    val template = Next(MapContext(c => c.copy(map = c.map ++ Map("test1" -> "v2"))), _ => Checkpoint(SqlQuery(sql)).some)
+    val template = Next(MapContext(c => c.copy(map = c.map ++ Map("test1" -> "v2"))), _ => Checkpoint(SqlQueryTemplate(sql)).some)
     val traceId  = UUID.randomUUID
     val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template)
     inside(res) {
-      case Left(CheckpointSubscriptions(_, AwaitedCheckpoint(actualTraceId, TraceContext(actualMap), Checkpoint(SqlQuery(actualSql))), queue, _)) =>
+      case Left(
+            CheckpointSubscriptions(_, AwaitedCheckpoint(actualTraceId, TraceContext(actualMap), Checkpoint(SqlQueryTemplate(actualSql))), queue, _)
+          ) =>
         queue shouldBe empty
         actualTraceId shouldEqual traceId
         actualSql shouldEqual sql

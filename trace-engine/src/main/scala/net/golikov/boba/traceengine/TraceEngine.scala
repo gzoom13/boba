@@ -6,7 +6,7 @@ import fs2.kafka._
 import io.circe._
 import io.circe.parser.decode
 import io.circe.syntax._
-import net.golikov.boba.domain.{ Next, SqlQuery, TraceContext }
+import net.golikov.boba.domain.{ Next, SqlQuery, SqlQueryTemplate, TraceContext }
 import net.golikov.boba.traceengine.HttpTraceEngineService._
 import net.golikov.boba.traceengine.TraceEngineConfig.configR
 import net.golikov.boba.traceengine.subscription.{ AwaitedCheckpoint, CheckpointSubscriptions, WaitingStage }
@@ -31,7 +31,7 @@ object TraceEngine extends IOApp {
     (for {
       config          <- configR[IO]
       producerSettings =
-        ProducerSettings[IO, UUID, (SqlQuery, TraceContext)]
+        ProducerSettings[IO, UUID, SqlQuery]
           .withBootstrapServers(config.kafkaBootstrapServers.value)
       consumerSettings =
         ConsumerSettings[IO, UUID, TraceContext]

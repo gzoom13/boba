@@ -15,7 +15,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 class HttpTraceEngineService[F[+_]: Async: Console](
-  producer: KafkaProducer.Metrics[F, UUID, (SqlQuery, TraceContext)],
+  producer: KafkaProducer.Metrics[F, UUID, SqlQuery],
   subscriptions: ConcurrentHashMap[UUID, CheckpointSubscriptions],
   traceStorage: ConcurrentHashMap[UUID, Seq[TraceContext]]
 ) extends Http4sDsl[F] {
@@ -72,7 +72,9 @@ object HttpTraceEngineService {
     Next(
       Next(
         Checkpoint(
-          SqlQuery("select id as \"transactionId\", UTF8TOSTRING(content) as \"originalContent\" from transfer where id = " + transferId.toString)
+          SqlQueryTemplate(
+            "select id as \"transactionId\", UTF8TOSTRING(content) as \"originalContent\" from transfer where id = " + transferId.toString
+          )
         ),
         _ =>
           MapContext(c =>
@@ -90,7 +92,7 @@ object HttpTraceEngineService {
       _.map
         .get("transactionId")
         .map(tranId =>
-          SqlQuery(
+          SqlQueryTemplate(
             "select id as \"convertedTransactionId\", " +
               "UTF8TOSTRING(content) as \"convertedContent\" " +
               "from converted_transaction where original_transaction_id = " + tranId

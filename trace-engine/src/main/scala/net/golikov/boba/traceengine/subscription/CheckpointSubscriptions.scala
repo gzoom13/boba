@@ -1,7 +1,7 @@
 package net.golikov.boba.traceengine.subscription
 
 import fs2.kafka.{ ProducerRecord, ProducerRecords }
-import net.golikov.boba.domain.{ Checkpoint, Next, SqlQuery, TraceContext }
+import net.golikov.boba.domain.{ Checkpoint, Next, SqlQuery, SqlQueryTemplate, TraceContext }
 
 import java.util.UUID
 
@@ -9,7 +9,7 @@ case class CheckpointSubscriptions(
   requestId: UUID,
   source: AwaitedCheckpoint,
   queue: List[WaitingStage],
-  records: ProducerRecords[Unit, UUID, (SqlQuery, TraceContext)]
+  records: ProducerRecords[Unit, UUID, SqlQuery]
 ) {
   def add(traceId: UUID, context: TraceContext, template: Next): CheckpointSubscriptions =
     copy(queue = WaitingStage(traceId, context, template) +: queue)
@@ -26,7 +26,7 @@ object CheckpointSubscriptions {
         ProducerRecord(
           "sql-query-actions",
           requestId,
-          (awaitingTemplate match { case Checkpoint(queryAction) => queryAction match { case q: SqlQuery => q } }, context)
+          SqlQuery(awaitingTemplate match { case Checkpoint(sqlTemplate: SqlQueryTemplate) => sqlTemplate }, context)
         )
       )
     )
