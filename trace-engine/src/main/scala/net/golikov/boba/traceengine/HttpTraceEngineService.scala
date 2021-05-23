@@ -2,8 +2,9 @@ package net.golikov.boba.traceengine
 
 import cats.effect._
 import cats.effect.std.Console
+import cats.free.Trampoline
 import cats.implicits._
-import fs2.kafka.{ KafkaProducer, ProducerRecords }
+import fs2.kafka.{KafkaProducer, ProducerRecords}
 import io.circe.parser.parse
 import net.golikov.boba.domain._
 import net.golikov.boba.traceengine.HttpTraceEngineService._
@@ -38,7 +39,7 @@ class HttpTraceEngineService[F[+_]: Async: Console](
         initialContext = TraceContext(routerDb)
         _             <- addContext(NewContext(traceId, initialContext))
         value          = collectTrace(traceId, initialContext, preconfiguredTemplate(traceRequest.transferId))
-        _             <- save(value)
+        _             <- save(value.run)
       } yield ()) *> Created()
   }
 
@@ -105,19 +106,16 @@ object HttpTraceEngineService {
     )
 
   type Results = (List[CheckpointSubscriptions], List[NewContext])
-  val emptyResults: Results = (List(), List())
 
-  def combine(r1: Results, r2: Results): Results = (r1._1 ++ r2._1, r1._2 ++ r2._2)
-
-  def collectTrace(traceId: UUID, context: TraceContext, template: TraceTemplate): Results = {
-    def collectT(context: TraceContext, template: TraceTemplate): Results =
+  def collectTrace(traceId: UUID, context: TraceContext, template: TraceTemplate): Trampoline[Results] = {
+    def collectT(context: TraceContext, template: TraceTemplate): Trampoline[Results] =
       template match {
         case currTemplate @ Fork(head, _) =>
-          collectFork(traceId, currTemplate, collectT(context, head))
+          Trampoline.defer(collectT(context, head)).flatMap(collectFork(traceId, currTemplate, _))
         case MapContext(f)                =>
-          (List(), List(NewContext(traceId, f(context))))
+          Trampoline.done(List(), List(NewContext(traceId, f(context))))
         case checkpoint: Checkpoint       =>
-          (List(CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint)), List())
+          Trampoline.done((List(CheckpointSubscriptions.forCheckpoint(traceId, context, checkpoint)), List()))
       }
 
     collectT(context, template)
@@ -127,7 +125,7 @@ object HttpTraceEngineService {
     traceId: UUID,
     currTemplate: Fork,
     headResults: Results
-  ): Results =
+  ): Trampoline[Results] =
     headResults match {
       case (headSubs, headResults) =>
         headResults
@@ -135,10 +133,12 @@ object HttpTraceEngineService {
           .map(headResult =>
             currTemplate
               .next(headResult)
-              .map(template => collectTrace(traceId, headResult, template))
-              .foldLeft(emptyResults)(combine)
+              .map(t => Trampoline.defer(collectTrace(traceId, headResult, t)))
+              .sequence
+              .map(_.combineAll)
           )
-          .foldLeft(emptyResults)(combine)
-          .leftMap(_ ++ headSubs.map(_.addToAllStacks(traceId, currTemplate)))
+          .sequence
+          .map(_.combineAll)
+          .map(_.leftMap(_ ++ headSubs.map(_.addToAllStacks(traceId, currTemplate))))
     }
 }

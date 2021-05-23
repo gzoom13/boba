@@ -68,8 +68,9 @@ object TraceEngine extends IOApp {
                                             .map(_.stack)
                                             .map(stack =>
                                               stack
-                                                .foldRight(emptyResults.map(_ => List(newContext))) { case (WaitingStage(traceId, fork), headResults) =>
-                                                  combine(collectFork(traceId, fork, headResults), headResults)
+                                                .foldRight((List[CheckpointSubscriptions](), List(newContext))) {
+                                                  case (WaitingStage(traceId, fork), headResults) =>
+                                                    collectFork(traceId, fork, headResults).run |+| headResults
                                                 }
                                             )
                                         _         <- results.map(service.save).sequence

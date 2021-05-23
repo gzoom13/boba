@@ -14,7 +14,7 @@ class TraceEngineSpec extends AnyFlatSpec with should.Matchers {
   it should "map values" in {
     val template = MapContext(c => c.copy(map = c.map ++ Map("test1" -> "v2")))
     val traceId  = UUID.randomUUID
-    val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template)
+    val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template).run
     res shouldEqual (List(), List(NewContext(traceId, TraceContext(Map("test1" -> "v2", "test2" -> "v1")))))
   }
 
@@ -22,7 +22,7 @@ class TraceEngineSpec extends AnyFlatSpec with should.Matchers {
     val template =
       Fork(MapContext(c => c.copy(map = c.map ++ Map("test1" -> "v2"))), _ => Seq(MapContext(c => c.copy(map = c.map ++ Map("test2" -> "v2")))))
     val traceId  = UUID.randomUUID
-    val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template)
+    val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template).run
     res shouldEqual (List(), List(NewContext(traceId, TraceContext(Map("test1" -> "v2", "test2" -> "v2")))))
   }
 
@@ -30,7 +30,7 @@ class TraceEngineSpec extends AnyFlatSpec with should.Matchers {
     val sql      = "some sql query"
     val template = Fork(MapContext(c => c.copy(map = c.map ++ Map("test1" -> "v2"))), _ => Seq(Checkpoint(SqlQueryTemplate(sql))))
     val traceId  = UUID.randomUUID
-    val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template)
+    val res      = collectTrace(traceId, TraceContext(Map("test1" -> "v1", "test2" -> "v1")), template).run
     inside(res) {
       case (
             CheckpointSubscriptions(
@@ -53,7 +53,7 @@ class TraceEngineSpec extends AnyFlatSpec with should.Matchers {
     val template   = Fork(Checkpoint(SqlQueryTemplate(sql)), _ => Seq())
     val traceId    = UUID.randomUUID
     val initialMap = Map("test1" -> "v1", "test2" -> "v1")
-    val res        = collectTrace(traceId, TraceContext(initialMap), template)
+    val res        = collectTrace(traceId, TraceContext(initialMap), template).run
     inside(res) {
       case (
             CheckpointSubscriptions(
