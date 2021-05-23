@@ -75,4 +75,12 @@ class TraceEngineSpec extends AnyFlatSpec with should.Matchers {
     }
   }
 
+  it should "not overflow stack" in {
+    val sql        = "some sql query"
+    val template   = (0 to 100_000).foldLeft(Fork(MapContext(identity), _ => Seq()))((fork, _) => Fork(fork, _ => Seq()))
+    val traceId    = UUID.randomUUID
+    val initialMap = Map("test1" -> "v1", "test2" -> "v1")
+    val res        = collectTrace(traceId, TraceContext(initialMap), template).run
+  }
+
 }
